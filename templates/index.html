@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>General Purpose AutoML Engine</title>
+    <style>
+        :root { --primary: #2563eb; --success: #16a34a; --bg: #f8fafc; --text: #1e293b; --border: #cbd5e1; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; max-width: 800px; margin: 0 auto; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); margin-bottom: 2rem; }
+        h1, h2 { color: #0f172a; margin-top: 0; }
+        h1 { border-bottom: 2px solid #e2e8f0; padding-bottom: 1rem; }
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.95rem; }
+        input, select { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 1rem; background-color: white;}
+        input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        button { background-color: var(--primary); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; width: 100%; }
+        button:hover { opacity: 0.9; }
+        .btn-admin { background-color: var(--success); }
+        .status-box { margin-top: 1rem; padding: 1rem; border-radius: 6px; display: none; font-weight: 500; }
+        .status-success { background-color: #dcfce7; color: #166534; display: block; }
+        .status-error { background-color: #fee2e2; color: #991b1b; display: block; }
+        .status-loading { background-color: #fef9c3; color: #854d0e; display: block; }
+        #predictionResult { margin-top: 2rem; padding: 1.5rem; background: #eff6ff; border-left: 4px solid var(--primary); display: none; font-size: 1.25rem; font-weight: bold; border-radius: 0 8px 8px 0; }
+        .feature-type-badge { color: #64748b; font-weight: normal; font-size: 0.85em; margin-left: 5px;}
+        /* Add this to your existing <style> section */
+.spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.btn-disabled {
+    opacity: 0.7 !important;
+    cursor: not-allowed !important;
+}
+    </style>
+</head>
+<body>
+
+    <h1>AutoML Prediction Engine</h1>
+
+    <div class="card">
+        <h2>🛠️ Admin: Deploy New Model</h2>
+        <p style="font-size: 0.9rem; color: #64748b; margin-top: -10px;">Upload a CSV. The system will automatically select the best features and train a model.</p>
+        
+        <form id="adminForm">
+            <div class="form-group">
+                <label for="appName">Application Name</label>
+                <input type="text" id="appName" name="app_name" placeholder="e.g., Placement Predictor" required>
+            </div>
+            <div class="form-group">
+                <label for="targetCol">Target Column (What to predict)</label>
+                <input type="text" id="targetCol" name="target_column" placeholder="e.g., Placed" required>
+            </div>
+            <div class="form-group">
+                <label for="csvFile">Training Data (.csv)</label>
+                <input type="file" id="csvFile" name="file" accept=".csv" required>
+            </div>
+            <button type="submit" class="btn-admin">Train & Deploy Pipeline</button>
+            <div id="adminStatus" class="status-box"></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>🔮 User: Make a Prediction</h2>
+        
+        <div class="form-group">
+            <label for="appSelector">Select a Deployed Model</label>
+            <select id="appSelector">
+                <option value="">-- Loading available models... --</option>
+            </select>
+        </div>
+
+        <form id="userForm" style="display: none;">
+            <div id="dynamicInputs"></div>
+            
+            <button type="submit" style="margin-top: 1rem;">Calculate Prediction</button>
+        </form>
+
+        <div id="predictionResult"></div>
+    </div>
+
+    <script>
+        // 1. ADMIN: Handle the Training Upload
+        document.getElementById('adminForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const statusBox = document.getElementById('adminStatus');
+            statusBox.className = 'status-box status-loading';
+            statusBox.innerText = "Analyzing data, extracting features, and training model... Please wait.";
+
+            const formData = new FormData(e.target);
+
+            try {
+                const response = await fetch('/admin/train', { method: 'POST', body: formData });
+                const data = await response.json();
+                
+                if(response.ok) {
+                    statusBox.className = 'status-box status-success';
+                    statusBox.innerText = data.message;
+                    e.target.reset();
+                    loadAvailableApps(); // Refresh the user dropdown immediately
+                } else {
+                    statusBox.className = 'status-box status-error';
+                    statusBox.innerText = "Error: " + data.error;
+                }
+            } catch (error) {
+                statusBox.className = 'status-box status-error';
+                statusBox.innerText = "Network Error while training.";
+            }
+        });
+
+        // 2. USER: Populate the Dropdown Menu on Load
+        async function loadAvailableApps() {
+            const selector = document.getElementById('appSelector');
+            try {
+                const response = await fetch('/api/apps');
+                const apps = await response.json();
+                
+                selector.innerHTML = '<option value="">-- Choose a Model --</option>';
+                apps.forEach(app => {
+                    selector.innerHTML += `<option value="${app.id}">${app.name}</option>`;
+                });
+            } catch(e) {
+                selector.innerHTML = '<option value="">Error loading models from server</option>';
+            }
+        }
+
+        // 3. USER: Build the Input Form Dynamically (Supporting Dropdowns!)
+        document.getElementById('appSelector').addEventListener('change', async (e) => {
+            const appId = e.target.value;
+            const userForm = document.getElementById('userForm');
+            const dynamicInputs = document.getElementById('dynamicInputs');
+            document.getElementById('predictionResult').style.display = 'none'; 
+            
+            if (!appId) {
+                userForm.style.display = 'none';
+                return;
+            }
+
+            // Ask the backend for the specific features required for this model
+            const response = await fetch(`/api/features/${appId}`);
+            const features = await response.json();
+
+            // Render the form
+            dynamicInputs.innerHTML = '';
+            features.forEach(feature => {
+                // Clean up the feature name for display (e.g. "Credit_Score" -> "Credit Score")
+                const displayLabel = feature.name.replace(/_/g, ' ');
+                
+                if (feature.type === 'categorical') {
+                    // BUILD A DROPDOWN MENU
+                    let optionsHTML = '<option value="">-- Select an option --</option>';
+                    if (feature.categories) {
+                        feature.categories.forEach(categoryValue => {
+                            optionsHTML += `<option value="${categoryValue}">${categoryValue}</option>`;
+                        });
+                    }
+                    
+                    dynamicInputs.innerHTML += `
+                        <div class="form-group">
+                            <label>${displayLabel} <span class="feature-type-badge">(category)</span></label>
+                            <select name="${feature.name}" required>
+                                ${optionsHTML}
+                            </select>
+                        </div>
+                    `;
+                } else {
+                    // BUILD A NUMBER INPUT
+                    dynamicInputs.innerHTML += `
+                        <div class="form-group">
+                            <label>${displayLabel} <span class="feature-type-badge">(numeric)</span></label>
+                            <input type="number" name="${feature.name}" required step="any">
+                        </div>
+                    `;
+                }
+            });
+
+            userForm.style.display = 'block';
+        });
+
+        // 4. USER: Submit the Prediction Request
+        document.getElementById('userForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const appId = document.getElementById('appSelector').value;
+            const formData = new FormData(e.target);
+            const inputs = {};
+            
+            // --- UI: START LOADING STATE ---
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerText;
+            const resultDiv = document.getElementById('predictionResult');
+            
+            submitBtn.disabled = true;
+            submitBtn.classList.add('btn-disabled');
+            submitBtn.innerHTML = '<span class="spinner"></span> Running Model...';
+            resultDiv.style.display = 'none'; // Hide old results
+            // -------------------------------
+            
+            for (let [key, value] of formData.entries()) {
+                const inputElement = e.target.querySelector(`[name="${key}"]`);
+                if (inputElement.tagName === 'INPUT' && inputElement.type === 'number') {
+                    inputs[key] = value !== "" ? parseFloat(value) : "";
+                } else {
+                    inputs[key] = value;
+                }
+            }
+
+            try {
+                const response = await fetch('/api/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ app_id: appId, inputs: inputs })
+                });
+
+                const data = await response.json();
+                
+                // Show the result
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `Predicted Outcome: <span style="color:var(--primary);">${data.prediction}</span>`;
+            } catch (error) {
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `<span style="color:var(--error);">Error generating prediction. Please try again.</span>`;
+            } finally {
+                // --- UI: STOP LOADING STATE ---
+                // This block runs no matter what, ensuring the button always resets
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-disabled');
+                submitBtn.innerText = originalBtnText;
+                // ------------------------------
+            }
+        });
+
+        // Boot up the app list when the page loads
+        window.onload = loadAvailableApps;
+    </script>
+</body>
+</html>

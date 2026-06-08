@@ -1,0 +1,22 @@
+# 1. Credentials and Secret Variables (CRITICAL)
+.env
+.env.local
+secrets.json
+
+# 2. Dependencies (These should be installed by the user, not downloaded from Git)
+node_modules/       # For Node.js/React projects
+venv/               # For Python virtual environments
+__pycache__/        # For Python compiled files
+
+# 3. System and OS Files
+.DS_Store           # macOS folder attributes
+Thumbs.db           # Windows image cache
+
+# 4. IDE and Editor Folders
+.vscode/            # VS Code workspace settings
+.idea/              # IntelliJ/PyCharm settings
+
+# 5. Build and Log files
+dist/
+build/
+*.log
